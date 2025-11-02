@@ -1,0 +1,279 @@
+#define BUMPC_USELIBC
+
+#ifdef BUMPC_USELIBC
+    #include <math.h>
+    #include <stdlib.h>
+    #include <float.h>
+    #define BUMPC_SQRT sqrt
+    #define BUMPC_ABS fabs
+    #define BUMPC_MIN fminf
+    #define BUMPC_FLOATMAX FLT_MAX
+    
+#endif
+
+#ifndef BUMPC_BOOL
+    #define BUMPC_BOOL char
+    #define BUMPC_TRUE 1
+    #define BUMPC_FALSE 0
+#endif
+
+#ifndef BUMPC_DELTA
+    #define BUMPC_DELTA  1e-5
+#endif
+
+#ifndef BUMPC_FLOAT
+    #define BUMPC_FLOAT float
+#endif
+
+#ifndef BUMPC_DIM
+    #define BUMPC_DIM 2
+#endif
+
+typedef struct bumpc_Vec {
+    BUMPC_FLOAT data[BUMPC_DIM];
+} bumpc_Vec; 
+
+#if BUMPC_DIM==2
+    bumpc_Vec bumpc_VecNew(BUMPC_FLOAT a, BUMPC_FLOAT b){
+        bumpc_Vec new;
+        new.data[0] = a;
+        new.data[1] = b;
+        return new;
+    }
+#endif
+
+typedef struct bumpc_Aabb {
+    bumpc_Vec pos;
+    bumpc_Vec ext;
+} bumpc_Aabb;
+
+#define BUMPC_GOOD 1
+#define BUMPC_BAD 0 
+typedef struct bumpc_LbRes {
+    BUMPC_FLOAT ti1;
+    BUMPC_FLOAT ti2;
+    bumpc_Vec norm1;
+    bumpc_Vec norm2;
+    char status;
+} bumpc_LbRes;
+
+typedef struct bumpc_CollisionResult {
+    BUMPC_BOOL overlaps;
+    BUMPC_FLOAT ti;
+    bumpc_Vec delta;
+    bumpc_Vec norm;
+    bumpc_Vec touch;
+    char status;
+} bumpc_CollisionResult;
+
+BUMPC_BOOL bumpc_floatEql(BUMPC_FLOAT a, BUMPC_FLOAT b) {
+    if(BUMPC_ABS(a - b) < BUMPC_DELTA )
+        return BUMPC_TRUE;
+    return BUMPC_FALSE;
+}
+
+bumpc_Vec bumpc_vec_sub(bumpc_Vec a, bumpc_Vec b){
+    bumpc_Vec ret = a;
+    for(int i = 0; i < BUMPC_DIM; i++){ ret.data[i] -= b.data[i]; }
+    return ret;
+}
+
+bumpc_Vec bumpc_vec_add(bumpc_Vec a, bumpc_Vec b){
+    bumpc_Vec ret = a;
+    for(int i = 0; i < BUMPC_DIM; i++){ ret.data[i] += b.data[i]; }
+    return ret;
+}
+
+BUMPC_FLOAT bumpc_vec_len(bumpc_Vec a){
+    BUMPC_FLOAT sum = 0;
+    for(int i = 0; i < BUMPC_DIM; i++){ sum += a.data[i]; }
+    return BUMPC_SQRT(sum);
+}
+
+BUMPC_FLOAT bumpc_nearest(BUMPC_FLOAT test_point, BUMPC_FLOAT a, BUMPC_FLOAT b){
+    return  (abs(a - test_point) < abs(b - test_point)) ? a : b;
+}
+
+BUMPC_FLOAT bumpc_sign(BUMPC_FLOAT a) {
+    if(a < 0.0)
+        return -1;
+    if(bumpc_floatEql(0.0, a))
+        return 0;
+    return 1;
+}
+
+bumpc_Vec bumpc_nearestCorner(bumpc_Aabb bb, bumpc_Vec point){
+    bumpc_Vec ret;
+    for(int i = 0; i < BUMPC_DIM; i++){
+        ret.data[i] = bumpc_nearest(point.data[i], bb.pos.data[i], bb.pos.data[i] + bb.ext.data[i]);
+    }
+    return ret;
+}
+
+BUMPC_BOOL bumpc_containsPoint(bumpc_Aabb bb, bumpc_Vec point){
+    BUMPC_BOOL ret = BUMPC_TRUE;
+    for(int i = 0; i< BUMPC_DIM; i++){
+        ret = ret && 
+            point.data[i] - bb.pos.data[i] > BUMPC_DELTA && 
+            bb.pos.data[i] + bb.ext.data[i] - point.data[i] > BUMPC_DELTA;
+    }
+    return ret;
+}
+
+bumpc_Aabb bumpc_minkowsky(bumpc_Aabb a, bumpc_Aabb b) {
+    bumpc_Aabb ret;
+    for(int i = 0; i < BUMPC_DIM; i++){
+        ret.pos.data[i] = b.pos.data[i] - a.pos.data[i] - a.ext.data[i];
+        ret.ext.data[i] = a.ext.data[i] + b.ext.data[i];
+    }
+    return ret;
+}
+
+BUMPC_BOOL bumpc_lbClip(bumpc_Vec norm, 
+                  BUMPC_FLOAT p, 
+                  BUMPC_FLOAT q, 
+                  BUMPC_FLOAT * ti1, 
+                  BUMPC_FLOAT * ti2,
+                  bumpc_Vec * n1,
+                  bumpc_Vec * n2){
+    if(bumpc_floatEql(p, 0.0)){
+        if(q <= 0) return BUMPC_FALSE;
+    }
+    else {
+        const BUMPC_FLOAT r  = q / p;
+        if(p < 0){
+            if(r > *ti2) return BUMPC_FALSE;
+
+            if(r > *ti1){
+                *ti1 = r;
+                *n1 = norm;
+            }
+        }
+        else{
+            if(r < *ti1) return BUMPC_FALSE;
+            if(r < *ti2){
+                *ti2 = r;
+                *n2 = norm;
+
+            }
+        }
+    }
+    return BUMPC_TRUE;
+}
+
+
+BUMPC_BOOL bumpc_liangBarskyLineClip(bumpc_Aabb clip_window, 
+                                      bumpc_Vec start, 
+                                      bumpc_Vec end,
+                                      bumpc_LbRes * res
+                                      ){
+    bumpc_Vec delta = bumpc_vec_sub(end, start);
+
+    bumpc_Vec norm1 = {0};
+    bumpc_Vec norm2 = {0};
+
+    for(int i = 0; i < BUMPC_DIM; i++){
+        bumpc_Vec nneg = {0};
+        bumpc_Vec npos = {0};
+        nneg.data[i] = -1;
+        npos.data[i] = 1;
+        if (bumpc_lbClip(
+        nneg, -delta.data[i], start.data[i] - clip_window.pos.data[i], &res->ti1, &res->ti2, &norm1, &norm2) 
+            == BUMPC_FALSE)
+            return BUMPC_FALSE;
+        if (bumpc_lbClip(npos, delta.data[i], clip_window.pos.data[i] + clip_window.ext.data[i] - start.data[i], &res->ti1, &res->ti2, &norm1, &norm2) == BUMPC_FALSE)
+            return  BUMPC_FALSE;
+    }
+    res->norm1 = norm1;
+    res->norm2 = norm2;
+    return BUMPC_TRUE;
+}
+
+bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb other, bumpc_Vec goal){
+    const bumpc_Vec delta = bumpc_vec_sub(goal, moved.pos);
+    const bumpc_Aabb mdiff = bumpc_minkowsky(moved, other);
+    BUMPC_BOOL overlaps = BUMPC_FALSE;
+
+    BUMPC_FLOAT ti = 0;
+    bumpc_Vec norm = {0};
+
+    // If the Minkowsky diff intersects the origin it is already overlapping
+    if(bumpc_containsPoint(mdiff, (bumpc_Vec){0})){
+        const bumpc_Vec point = bumpc_nearestCorner(mdiff, (bumpc_Vec){0});
+        BUMPC_FLOAT area = -1;
+        for(int i = 0; i < BUMPC_DIM; i++){
+            area *= BUMPC_MIN(moved.ext.data[i], BUMPC_ABS(point.data[i]));
+        }
+        //ti = -wi * hi; // ti is the negative area of intersection
+        ti = area;
+        overlaps = BUMPC_TRUE;
+    }
+    else {
+        bumpc_LbRes lb; 
+        lb.ti1 = -BUMPC_FLOATMAX;
+        lb.ti2 = BUMPC_FLOATMAX;
+        BUMPC_BOOL status = bumpc_liangBarskyLineClip(mdiff, (bumpc_Vec){0},delta, &lb);
+        if(status && lb.ti1 < 1.0 && (BUMPC_ABS(lb.ti1 - lb.ti2) >= BUMPC_DELTA) && (lb.ti1 > 0 && lb.ti2 > 0)){
+            ti = lb.ti1;
+            norm = lb.norm1;
+            overlaps = BUMPC_FALSE;
+        }
+        else {
+            return (bumpc_CollisionResult){.status = BUMPC_BAD};
+        }
+    }
+
+    bumpc_Vec tv = {0};
+    if(overlaps){
+        if(bumpc_floatEql(bumpc_vec_len(delta),  0.0)){
+            bumpc_Vec np = bumpc_nearestCorner(mdiff, (bumpc_Vec){0});
+            size_t mi = 0;
+            BUMPC_FLOAT min =  BUMPC_FLOATMAX;
+            //Find the minimum component and set all others to zero
+            {
+                for(int i = 0; i < BUMPC_DIM; i++){
+                    if(BUMPC_ABS(np.data[i]) < min){
+                        min = BUMPC_ABS(np.data[i]);
+                        mi = i;
+                    }
+                }
+                for(int i = 0; i < BUMPC_DIM; i++){
+                    if(i != mi) 
+                        np.data[i] = 0;
+                }
+                for(int i = 0; i < BUMPC_DIM; i++){
+                    norm.data[i] = bumpc_sign(np.data[i]);
+                    tv.data[i] = moved.pos.data[i] + np.data[i];
+                }
+            }
+        } 
+        else {
+            bumpc_LbRes lb;
+            lb.ti1 = -BUMPC_FLOATMAX;
+            lb.ti2 = 1;
+
+            BUMPC_BOOL status =  bumpc_liangBarskyLineClip(mdiff, (bumpc_Vec){0},delta, &lb);
+            if(status != BUMPC_GOOD) return (bumpc_CollisionResult){.status = BUMPC_BAD};
+            norm = lb.norm1;
+            ti = lb.ti1;
+            for(int i = 0; i < BUMPC_DIM; i++){
+                tv.data[i] = moved.pos.data[i] + delta.data[i] * lb.ti1;
+            }
+        }
+    }
+    else {
+        for(int i = 0; i < BUMPC_DIM; i++){
+            tv.data[i] = moved.pos.data[i] + delta.data[i] * ti;
+        }
+    }
+    return (bumpc_CollisionResult){
+        .overlaps = overlaps,
+        .ti = ti,
+        .delta = delta,
+        .norm = norm,
+        .touch = tv,
+        .status = BUMPC_GOOD,
+    };
+}
+
+
