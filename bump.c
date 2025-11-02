@@ -8,7 +8,7 @@
     #define BUMPC_ABS fabs
     #define BUMPC_MIN fminf
     #define BUMPC_FLOATMAX FLT_MAX
-    
+    #define BUMPC_SORT qsort
 #endif
 
 #ifndef BUMPC_BOOL
@@ -63,6 +63,9 @@ typedef struct bumpc_CollisionResult {
     bumpc_Vec delta;
     bumpc_Vec norm;
     bumpc_Vec touch;
+    bumpc_Aabb moved;
+    bumpc_Aabb other;
+    size_t id;
     char status;
 } bumpc_CollisionResult;
 
@@ -213,7 +216,7 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
         lb.ti1 = -BUMPC_FLOATMAX;
         lb.ti2 = BUMPC_FLOATMAX;
         BUMPC_BOOL status = bumpc_liangBarskyLineClip(mdiff, (bumpc_Vec){0},delta, &lb);
-        if(status && lb.ti1 < 1.0 && (BUMPC_ABS(lb.ti1 - lb.ti2) >= BUMPC_DELTA) && (lb.ti1 > 0 && lb.ti2 > 0)){
+        if(status && lb.ti1 < 1.0 && (BUMPC_ABS(lb.ti1 - lb.ti2) >= BUMPC_DELTA) && (0 < lb.ti1 + BUMPC_DELTA  || bumpc_floatEql(lb.ti1, 0) && lb.ti2 > 0)){
             ti = lb.ti1;
             norm = lb.norm1;
             overlaps = BUMPC_FALSE;
@@ -225,9 +228,10 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
 
     bumpc_Vec tv = {0};
     if(overlaps){
+        // If we aren't moving, teleport to nearest edge
         if(bumpc_floatEql(bumpc_vec_len(delta),  0.0)){
             bumpc_Vec np = bumpc_nearestCorner(mdiff, (bumpc_Vec){0});
-            size_t mi = 0;
+            size_t mi = 100;
             BUMPC_FLOAT min =  BUMPC_FLOATMAX;
             //Find the minimum component and set all others to zero
             {
@@ -256,8 +260,10 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
             if(status != BUMPC_GOOD) return (bumpc_CollisionResult){.status = BUMPC_BAD};
             norm = lb.norm1;
             ti = lb.ti1;
+
+            printf("jit %f %f \n", norm.data[0], norm.data[1]);
             for(int i = 0; i < BUMPC_DIM; i++){
-                tv.data[i] = moved.pos.data[i] + delta.data[i] * lb.ti1;
+                tv.data[i] = moved.pos.data[i] + delta.data[i] * ti;
             }
         }
     }
@@ -273,7 +279,67 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
         .norm = norm,
         .touch = tv,
         .status = BUMPC_GOOD,
+        .moved = moved,
+        .other = other,
     };
+}
+
+BUMPC_FLOAT bumpc_squareDist(bumpc_Aabb bb1, bumpc_Aabb bb2){
+    BUMPC_FLOAT sum = 0;
+    for(int i = 0; i < BUMPC_DIM; i++){
+        BUMPC_FLOAT a = bb1.pos.data[i] - bb2.pos.data[i] + (bb1.ext.data[i] - bb2.ext.data[i]) / 2;
+        sum += a * a;
+    }
+    return sum;
+}
+
+int bumpc_compareCollisionResult(const void* a, const void* b){
+    const bumpc_CollisionResult * lhs = a;
+    const bumpc_CollisionResult * rhs = b;
+
+    if(bumpc_floatEql(lhs->ti, rhs->ti)){
+        return bumpc_squareDist(lhs->moved, lhs->other) <  bumpc_squareDist(rhs->moved, rhs->other);
+    }
+    return lhs->ti < rhs->ti;
+}
+
+// Returns number of results stored in `output`
+size_t bumpc_detectCollisionList(
+                          bumpc_Aabb moved, 
+                          bumpc_Aabb * to_check, 
+                          size_t to_check_count,
+                          bumpc_Vec goal,
+                          // A pointer from malloc, realloc is called as necessary
+                          // Avoids calling malloc every frame while still allowing a dynamic number of 
+                          // collisions to occur
+                          bumpc_CollisionResult * output,
+                          // Updated whan realloc is called
+                          size_t * output_count
+                          ){
+
+    size_t grow_amt = 10;
+
+    size_t col_count = 0;
+    for(int i = 0; i < to_check_count; i++){
+        const bumpc_Aabb other = to_check[i];
+        bumpc_CollisionResult col = bumpc_detectCollisionAabb(moved, other, goal);
+        if(col.status == BUMPC_GOOD){
+            if(col_count >= *output_count){
+                output_count += grow_amt;
+                output = realloc(output, sizeof(bumpc_CollisionResult) * *output_count);
+            }
+
+            col.id = i;
+            output[col_count] = col;
+            col_count += 1;
+        }
+    }
+
+    if(col_count > 0){
+        BUMPC_SORT((void*)output, col_count, sizeof(bumpc_CollisionResult), bumpc_compareCollisionResult);
+    }
+
+    return col_count;
 }
 
 
