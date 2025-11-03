@@ -1,4 +1,5 @@
 # port of bump.lua to C
+## AABB collision detection
 There may be bugs.
 
 This is generic for demensions.
