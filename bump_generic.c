@@ -70,7 +70,6 @@ typedef struct bumpc_Ctx {
 bumpc_Ctx bumpc_init();
 void bumpc_deinit(bumpc_Ctx*);
 
-#define BUMPC_USELIBC
 #ifdef BUMPC_USELIBC
     #include <math.h>
     #include <stdlib.h>
@@ -78,8 +77,11 @@ void bumpc_deinit(bumpc_Ctx*);
     #define BUMPC_SQRT sqrt
     #define BUMPC_ABS fabs
     #define BUMPC_MIN fminf
-    #define BUMPC_FLOATMAX FLT_MAX
     #define BUMPC_SORT qsort
+
+    #ifndef BUMPC_FLOATMAX
+        #define BUMPC_FLOATMAX FLT_MAX
+    #endif
 #endif
         
 // Determine collisions when moving `moved` to goal against list of aabb's in `to_check`
