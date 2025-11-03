@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include "raylib.h"
-#include "bump.c"
+#include "bump.h"
 #include <stdlib.h>
 
 void main(){
@@ -39,8 +39,8 @@ void main(){
         if (IsKeyDown(KEY_W))
             dy -= 1;
         
-        dx *= 1.5;
-        dy *= 1.5;
+        dx *= 10.5;
+        dy *= 10.5;
 
         for(int i = 0; i < rect_ct; i++){
             const bumpc_Aabb re = rects[i];
