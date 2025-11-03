@@ -43,19 +43,33 @@ typedef struct bumpc_LbRes {
 
 typedef struct bumpc_CollisionResult {
     BUMPC_BOOL overlaps;
-    BUMPC_FLOAT ti;
-    bumpc_Vec delta;
-    bumpc_Vec norm;
-    bumpc_Vec touch;
+    BUMPC_FLOAT ti; 
+    bumpc_Vec delta;  // The delta applied to moved if no collision occured
+    bumpc_Vec norm;   // normal of collision
+    bumpc_Vec touch;  // new value for moved.pos if collision
     bumpc_Aabb moved;
     bumpc_Aabb other;
-    size_t id;
-    char status;
+    size_t id;        // index of `moved` in the passed input list
+    char status;      // == BUMPC_GOOD when a collision occured
 } bumpc_CollisionResult;
 
 typedef void *(*bumpc_alloc_func)(void *opaque, size_t items, size_t size);
 typedef void (*bumpc_free_func)(void *opaque, void *address);
 typedef void *(*bumpc_realloc_func)(void *opaque, void *address, size_t items, size_t size);
+
+typedef struct bumpc_Ctx {
+    void* useralloc;
+    bumpc_alloc_func alloc_func;
+    bumpc_free_func free_func;
+    bumpc_realloc_func realloc_func;
+
+    bumpc_CollisionResult * output;
+    size_t output_count;
+} bumpc_Ctx;
+
+bumpc_Ctx bumpc_init();
+void bumpc_deinit(bumpc_Ctx*);
+
 #define BUMPC_USELIBC
 #ifdef BUMPC_USELIBC
     #include <math.h>
@@ -68,21 +82,18 @@ typedef void *(*bumpc_realloc_func)(void *opaque, void *address, size_t items, s
     #define BUMPC_SORT qsort
 #endif
         
-// Returns number of results stored in `output`
+// Determine collisions when moving `moved` to goal against list of aabb's in `to_check`
+// ctx.output holds a sorted list of results
+// Returns the number of results stored in `ctx.output`
 size_t bumpc_detectCollisionList(
+                          bumpc_Ctx*,
                           bumpc_Aabb moved, 
                           bumpc_Aabb * to_check, 
                           size_t to_check_count,
-                          bumpc_Vec goal,
-                          // A pointer from malloc, realloc is called as necessary
-                          // Avoids calling malloc every frame while still allowing a dynamic number of 
-                          // collisions to occur
-                          bumpc_CollisionResult * output,
-                          // Updated whan realloc is called
-                          size_t * output_count
-                          );
+                          bumpc_Vec goal);
 
 #ifdef BUMPC_IMPLEMENTATION
+
 
 #ifdef BUMPC_USELIBC
 void *bumpc_def_alloc_func(void *opaque, size_t items, size_t size) {
@@ -95,6 +106,31 @@ void *bumpc_def_realloc_func(void *opaque, void *address, size_t items, size_t s
     return realloc(address, items * size);
 }
 #endif  //BUMPC_USELIBC
+        
+bumpc_Ctx bumpc_init(){
+    return (bumpc_Ctx){
+        #ifdef BUMPC_USELIBC
+        .alloc_func = bumpc_def_alloc_func,
+        .realloc_func = bumpc_def_realloc_func,
+        .free_func = bumpc_def_free_func,
+        .useralloc = NULL,
+        #else
+        .alloc_func = NULL,
+        .realloc_func = NULL,
+        .free_func = NULL,
+        .useralloc = NULL,
+        #endif 
+        .output = NULL,
+        .output_count = 0,
+    };
+}
+
+void bumpc_deinit(bumpc_Ctx * ctx){
+    if(ctx->free_func != NULL){
+        ctx->free_func(ctx->useralloc, ctx->output);
+        ctx->output = NULL;
+    }
+}
 
 #if BUMPC_DIM==2
     bumpc_Vec bumpc_VecNew(BUMPC_FLOAT a, BUMPC_FLOAT b){
@@ -341,20 +377,11 @@ int bumpc_compareCollisionResult(const void* a, const void* b){
     return lhs->ti < rhs->ti;
 }
 
-// Returns number of results stored in `output`
-size_t bumpc_detectCollisionList(
-                          bumpc_Aabb moved, 
-                          bumpc_Aabb * to_check, 
-                          size_t to_check_count,
-                          bumpc_Vec goal,
-                          // A pointer from malloc, realloc is called as necessary
-                          // Avoids calling malloc every frame while still allowing a dynamic number of 
-                          // collisions to occur
-                          bumpc_CollisionResult * output,
-                          // Updated whan realloc is called
-                          size_t * output_count
-                          ){
-
+size_t bumpc_detectCollisionList(bumpc_Ctx * ctx,
+                                 bumpc_Aabb moved, 
+                                 bumpc_Aabb * to_check, 
+                                 size_t to_check_count,
+                                 bumpc_Vec goal){
     size_t grow_amt = 10;
 
     size_t col_count = 0;
@@ -362,19 +389,19 @@ size_t bumpc_detectCollisionList(
         const bumpc_Aabb other = to_check[i];
         bumpc_CollisionResult col = bumpc_detectCollisionAabb(moved, other, goal);
         if(col.status == BUMPC_GOOD){
-            if(col_count >= *output_count){
-                output_count += grow_amt;
-                output = realloc(output, sizeof(bumpc_CollisionResult) * *output_count);
+            if(col_count >= ctx->output_count){
+                ctx->output_count += grow_amt;
+                ctx->output = ctx->realloc_func(ctx->useralloc, ctx->output,ctx->output_count,  sizeof(bumpc_CollisionResult));
             }
 
             col.id = i;
-            output[col_count] = col;
+            ctx->output[col_count] = col;
             col_count += 1;
         }
     }
 
     if(col_count > 0){
-        BUMPC_SORT((void*)output, col_count, sizeof(bumpc_CollisionResult), bumpc_compareCollisionResult);
+        BUMPC_SORT((void*)ctx->output, col_count, sizeof(bumpc_CollisionResult), bumpc_compareCollisionResult);
     }
 
     return col_count;

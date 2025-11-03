@@ -8,6 +8,8 @@ void main(){
     InitWindow(800,600, "get spooky");
     SetTargetFPS(60);
 
+    bumpc_Ctx bctx = bumpc_init();
+
     size_t rect_ct = 30;
     bumpc_Aabb * rects  = malloc(sizeof(bumpc_Aabb) * rect_ct);
     for(int i = 0; i < rect_ct; i++){
@@ -18,9 +20,6 @@ void main(){
     bumpc_Aabb player = {0};
     player.ext.data[0] =  30;
     player.ext.data[1] =  30;
-
-    size_t cols_len = 5;
-    bumpc_CollisionResult * cols = malloc(sizeof(bumpc_CollisionResult) * cols_len);
 
 
     while (!WindowShouldClose()) {
@@ -51,10 +50,10 @@ void main(){
         DrawRectangle(player.pos.data[0], player.pos.data[1], player.ext.data[0], player.ext.data[1], WHITE);
         bumpc_Vec goal = bumpc_VecNew(player.pos.data[0] + dx, player.pos.data[1] + dy);
 
-        size_t num_col = bumpc_detectCollisionList(player, rects, rect_ct, goal, cols, &cols_len);
+        size_t num_col = bumpc_detectCollisionList(&bctx, player, rects, rect_ct, goal);
         for(int i = 0; i < num_col; i++){
             
-            bumpc_CollisionResult r  = cols[i];
+            bumpc_CollisionResult r  = bctx.output[i];
             bumpc_Vec new = player.pos;
             if(r.norm.data[0] != 0){
                 goal.data[0]  = r.touch.data[0];
