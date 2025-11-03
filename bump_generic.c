@@ -94,6 +94,8 @@ size_t bumpc_detectCollisionList(
                           size_t to_check_count,
                           bumpc_Vec goal);
 
+BUMPC_FLOAT bumpc_vec_len(bumpc_Vec);
+BUMPC_BOOL bumpc_floatEql(BUMPC_FLOAT , BUMPC_FLOAT );
 #ifdef BUMPC_IMPLEMENTATION
 
 
@@ -374,9 +376,9 @@ int bumpc_compareCollisionResult(const void* a, const void* b){
     const bumpc_CollisionResult * rhs = b;
 
     if(bumpc_floatEql(lhs->ti, rhs->ti)){
-        return bumpc_squareDist(lhs->moved, lhs->other) <  bumpc_squareDist(rhs->moved, rhs->other);
+        return bumpc_squareDist(lhs->moved, lhs->other) >  bumpc_squareDist(rhs->moved, rhs->other);
     }
-    return lhs->ti < rhs->ti;
+    return lhs->ti > rhs->ti;
 }
 
 size_t bumpc_detectCollisionList(bumpc_Ctx * ctx,

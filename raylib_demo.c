@@ -17,6 +17,13 @@ void main(){
         rects[i].ext = bumpc_VecNew(rand() % 100 + 20, rand() % 100 + 20);
     }
 
+    rects[0].pos = bumpc_VecNew(40,40);
+
+    rects[0].ext = bumpc_VecNew(40,40);
+    rects[1].ext = bumpc_VecNew(40,40);
+
+    rects[1].pos = bumpc_VecNew(40 * 2,40);
+
     bumpc_Aabb player = {0};
     player.ext.data[0] =  30;
     player.ext.data[1] =  30;
@@ -38,31 +45,43 @@ void main(){
         if (IsKeyDown(KEY_W))
             dy -= 1;
         
-        dx *= 10.5;
-        dy *= 10.5;
+        dx *= 1.5;
+        dy *= 1.5;
 
         for(int i = 0; i < rect_ct; i++){
             const bumpc_Aabb re = rects[i];
-            DrawRectangle(re.pos.data[0], re.pos.data[1], re.ext.data[0], re.ext.data[1], WHITE);
+            DrawRectangleLines(re.pos.data[0], re.pos.data[1], re.ext.data[0], re.ext.data[1], WHITE);
         }
 
 
         DrawRectangle(player.pos.data[0], player.pos.data[1], player.ext.data[0], player.ext.data[1], WHITE);
         bumpc_Vec goal = bumpc_VecNew(player.pos.data[0] + dx, player.pos.data[1] + dy);
+        bumpc_Aabb moved = player;
 
-        size_t num_col = bumpc_detectCollisionList(&bctx, player, rects, rect_ct, goal);
-        for(int i = 0; i < num_col; i++){
-            
-            bumpc_CollisionResult r  = bctx.output[i];
-            bumpc_Vec new = player.pos;
-            if(r.norm.data[0] != 0){
-                goal.data[0]  = r.touch.data[0];
+        bool loop = true;
+        printf("start\n");
+        while(loop){
+            size_t num_col = bumpc_detectCollisionList(&bctx, moved, rects, rect_ct, goal);
+            //TODO prevent infinite loop
+            if(num_col == 0)
+                break;
+            for(int i = 0; i < num_col; i++){
+                bumpc_CollisionResult r  = bctx.output[i];
+
+                moved.pos = r.touch;
+                if(r.norm.data[1] != 0){
+                    printf("y %d\n", r.id);
+                    goal.data[1]  = r.touch.data[1];
+                    break;
+                }
+                else {
+                    printf("x %d\n", r.id);
+                    goal.data[0]  = r.touch.data[0];
+                    break;
+                }
             }
-            if(r.norm.data[1] != 0)
-                goal.data[1]  = r.touch.data[1];
-                new.data[1] = r.touch.data[1];
         }
-            player.pos = goal;
+        player.pos = goal;
 
         EndDrawing();
   }

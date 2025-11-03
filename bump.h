@@ -1,7 +1,7 @@
 #define BUMPC_DIM 2
 #define BUMPC_FLOAT float
 // margin of error
-#define BUMPC_DELTA 1e-5 
+#define BUMPC_DELTA 1e-5
 
 #define BUMPC_USELIBC // You must -lm if using libc
                       // includes: math, stdlib, float
