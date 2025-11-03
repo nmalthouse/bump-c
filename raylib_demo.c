@@ -1,15 +1,19 @@
 #include <stdio.h>
 #include "raylib.h"
 #include "bump.c"
+#include <stdlib.h>
 
 void main(){
     printf("Hello\n");
     InitWindow(800,600, "get spooky");
     SetTargetFPS(60);
 
-    bumpc_Aabb other;
-    other.pos = bumpc_VecNew(100,200);
-    other.ext = bumpc_VecNew(100,100);
+    size_t rect_ct = 30;
+    bumpc_Aabb * rects  = malloc(sizeof(bumpc_Aabb) * rect_ct);
+    for(int i = 0; i < rect_ct; i++){
+        rects[i].pos = bumpc_VecNew(rand() % 800, rand() % 600);
+        rects[i].ext = bumpc_VecNew(rand() % 100 + 20, rand() % 100 + 20);
+    }
 
     bumpc_Aabb player = {0};
     player.ext.data[0] =  30;
@@ -38,14 +42,19 @@ void main(){
         dx *= 1.5;
         dy *= 1.5;
 
+        for(int i = 0; i < rect_ct; i++){
+            const bumpc_Aabb re = rects[i];
+            DrawRectangle(re.pos.data[0], re.pos.data[1], re.ext.data[0], re.ext.data[1], WHITE);
+        }
 
-        DrawRectangle(other.pos.data[0], other.pos.data[1], other.ext.data[0], other.ext.data[1], WHITE);
+
         DrawRectangle(player.pos.data[0], player.pos.data[1], player.ext.data[0], player.ext.data[1], WHITE);
         bumpc_Vec goal = bumpc_VecNew(player.pos.data[0] + dx, player.pos.data[1] + dy);
 
-        size_t num_col = bumpc_detectCollisionList(player, &other, 1, goal, cols, &cols_len);
-        if(num_col > 0){
-            bumpc_CollisionResult r  = cols[0];
+        size_t num_col = bumpc_detectCollisionList(player, rects, rect_ct, goal, cols, &cols_len);
+        for(int i = 0; i < num_col; i++){
+            
+            bumpc_CollisionResult r  = cols[i];
             bumpc_Vec new = player.pos;
             if(r.norm.data[0] != 0){
                 goal.data[0]  = r.touch.data[0];

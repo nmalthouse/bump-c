@@ -216,7 +216,10 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
         lb.ti1 = -BUMPC_FLOATMAX;
         lb.ti2 = BUMPC_FLOATMAX;
         BUMPC_BOOL status = bumpc_liangBarskyLineClip(mdiff, (bumpc_Vec){0},delta, &lb);
-        if(status && lb.ti1 < 1.0 && (BUMPC_ABS(lb.ti1 - lb.ti2) >= BUMPC_DELTA) && (0 < lb.ti1 + BUMPC_DELTA  || bumpc_floatEql(lb.ti1, 0) && lb.ti2 > 0)){
+        if(status 
+                && lb.ti1 < 1.0 
+                && (BUMPC_ABS(lb.ti1 - lb.ti2) >= BUMPC_DELTA) 
+                && (0 < lb.ti1 + BUMPC_DELTA  || bumpc_floatEql(lb.ti1, 0) && lb.ti2 > 0)){
             ti = lb.ti1;
             norm = lb.norm1;
             overlaps = BUMPC_FALSE;
@@ -261,7 +264,6 @@ bumpc_CollisionResult bumpc_detectCollisionAabb(bumpc_Aabb moved, bumpc_Aabb oth
             norm = lb.norm1;
             ti = lb.ti1;
 
-            printf("jit %f %f \n", norm.data[0], norm.data[1]);
             for(int i = 0; i < BUMPC_DIM; i++){
                 tv.data[i] = moved.pos.data[i] + delta.data[i] * ti;
             }
